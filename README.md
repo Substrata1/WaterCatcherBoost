@@ -1,4 +1,4 @@
-<b>Water Catcher Boost</b> allows you to boost the collection rate of water catchers.
+**Water Catcher Boost** allows you to boost the collection rate of water catchers.
 
 This plugin does not alter the default rates.
 
