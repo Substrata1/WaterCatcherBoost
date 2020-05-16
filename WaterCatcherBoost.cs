@@ -1,18 +1,24 @@
 using System;
+using System.Collections.Generic;
 using Oxide.Core;
 using Newtonsoft.Json;
 
 namespace Oxide.Plugins
 {
-    [Info("Water Catcher Boost", "Substrata", "1.0.0")]
+    [Info("Water Catcher Boost", "Substrata", "1.0.1")]
     [Description("Boosts the collection rate of water catchers")]
 
     class WaterCatcherBoost : RustPlugin
     {
-        void OnServerInitialized(bool serverInitialized)
-        {
-            LoadConfigVariables();
+        private HashSet<WaterCatcher> wCatchers = new HashSet<WaterCatcher>();
 
+        private void Init()
+        {
+            LoadVariables();
+        }
+
+        private void OnServerInitialized()
+        {
             var rnd = new System.Random();
 
             int lMin = configData.LargeCatchers.MinBoost;
@@ -24,37 +30,54 @@ namespace Oxide.Plugins
             {
                 if (lMin > lMax) lMin = lMax;
                 if (sMin > sMax) sMin = sMax;
-                PrintWarning("Warning! Max values must be greater than or equal to min values.\nSee the documentation for more info.");
+                PrintWarning("Warning! Maximum values must be greater than or equal to minimum values.\nSee the documentation for more info.");
+            }
+
+            foreach (var wCatcher in UnityEngine.Object.FindObjectsOfType<WaterCatcher>())
+            {
+                if (wCatcher != null) wCatchers.Add(wCatcher);
             }
 
             timer.Every(60f, () =>
             {
-                foreach (var wCatcher in UnityEngine.Object.FindObjectsOfType<WaterCatcher>())
+                if (wCatchers == null || wCatchers.Count == 0) return;
+                foreach (var wCatcher in wCatchers)
                 {
-                    if (wCatcher != null && wCatcher.ShortPrefabName != null && wCatcher.ShortPrefabName == "water_catcher_large" && !wCatcher.IsFull())
+                    if (wCatcher != null && !wCatcher.IsFull())
                     {
-                        int lrg;
-                        if (lMin == lMax) lrg = lMin;
-                        else lrg = rnd.Next(lMin, lMax + 1);
+                        if (wCatcher.ShortPrefabName == "water_catcher_large")
+                        {
+                            int lrg;
+                            if (lMin == lMax) lrg = lMin;
+                            else lrg = rnd.Next(lMin, lMax + 1);
 
-                        if (lrg >= 1){
-                            Item water_lrg = ItemManager.CreateByName("water", lrg);
-                            if (water_lrg != null) water_lrg.MoveToContainer(wCatcher.inventory);
+                            if (lrg >= 1){
+                                ItemManager.CreateByName("water", lrg)?.MoveToContainer(wCatcher.inventory);
+                            }
                         }
-                    }
-                    if (wCatcher != null && wCatcher.ShortPrefabName != null && wCatcher.ShortPrefabName.Contains("water_catcher_small") && !wCatcher.IsFull())
-                    {
-                        int sml;
-                        if (sMin == sMax) sml = sMin;
-                        else sml = rnd.Next(sMin, sMax + 1);
+                        if (wCatcher.ShortPrefabName.Contains("water_catcher_small"))
+                        {
+                            int sml;
+                            if (sMin == sMax) sml = sMin;
+                            else sml = rnd.Next(sMin, sMax + 1);
 
-                        if (sml >= 1){
-                            Item water_sml = ItemManager.CreateByName("water", sml);
-                            if (water_sml != null) water_sml.MoveToContainer(wCatcher.inventory);
+                            if (sml >= 1){
+                                ItemManager.CreateByName("water", sml)?.MoveToContainer(wCatcher.inventory);
+                            }
                         }
                     }
                 }
             });
+        }
+
+        void OnEntitySpawned(WaterCatcher wCatcher)
+        {
+            if (wCatcher != null && !wCatchers.Contains(wCatcher)) wCatchers.Add(wCatcher);
+        }
+
+        void OnEntityKill(WaterCatcher wCatcher)
+        {
+            if (wCatcher != null && wCatchers.Contains(wCatcher)) wCatchers.Remove(wCatcher);
         }
 
         #region Config
