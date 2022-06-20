@@ -1,166 +1,88 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Oxide.Core;
 using Newtonsoft.Json;
 
 namespace Oxide.Plugins
 {
-    [Info("Water Catcher Boost", "Substrata", "1.0.2")]
+    [Info("Water Catcher Boost", "Substrata", "1.0.3")]
     [Description("Boosts the collection rate of water catchers & pumps")]
 
     class WaterCatcherBoost : RustPlugin
     {
-        private HashSet<WaterCatcher> wCatcherList = new HashSet<WaterCatcher>();
-        private HashSet<WaterPump> wPumpList = new HashSet<WaterPump>();
+        System.Random random = new System.Random();
+        ItemDefinition freshWater = ItemManager.FindItemDefinition(-1779180711);
 
-        System.Random rnd = new System.Random();
-
-        int lMin; int lMax; int sMin; int sMax; int wpMin; int wpMax;
-
-        private void OnServerInitialized()
+        void OnWaterCollect(WaterCatcher waterCatcher)
         {
-            lMin = configData.largeCatchers.MinBoost;
-            lMax = configData.largeCatchers.MaxBoost;
-            sMin = configData.smallCatchers.MinBoost;
-            sMax = configData.smallCatchers.MaxBoost;
-            wpMin = configData.waterPumps.MinBoost;
-            wpMax = configData.waterPumps.MaxBoost;
+            if (waterCatcher == null || freshWater == null || waterCatcher.IsFull()) return;
 
-            if (lMin > lMax || sMin > sMax || wpMin > wpMax)
-            {
-                if (lMin > lMax) lMin = lMax;
-                if (sMin > sMax) sMin = sMax;
-                if (wpMin > wpMax) wpMin = wpMax;
-                PrintWarning("Warning! Maximum values must be greater than or equal to minimum values.\nSee the documentation for more info.");
-            }
+            int amount = 0;
+            if (waterCatcher.ShortPrefabName.Contains("water_catcher_small"))
+                amount = GetAmount(configData.smallWaterCatchers.minBoost, configData.smallWaterCatchers.maxBoost);
+            else if (waterCatcher.ShortPrefabName == "water_catcher_large")
+                amount = GetAmount(configData.largeWaterCatchers.minBoost, configData.largeWaterCatchers.maxBoost);
 
-            foreach (WaterCatcher wCatcher in BaseNetworkable.serverEntities.Where(x => x is WaterCatcher))
-            {
-                wCatcherList.Add(wCatcher);
-            }
-
-            foreach (WaterPump wPump in BaseNetworkable.serverEntities.Where(x => x is WaterPump))
-            {
-                wPumpList.Add(wPump);
-            }
-
-            timer.Every(60f, () =>
-            {
-                AddToCatchers();
-                AddToPumps();
-            });
+            if (amount > 0)
+                waterCatcher.inventory.AddItem(freshWater, amount);
         }
 
-        void AddToCatchers()
+        void OnWaterCollect(WaterPump waterPump, ItemDefinition water)
         {
-            if (wCatcherList == null || wCatcherList.Count == 0) return;
-            if (lMax < 1 && sMax < 1) return;
+            if (waterPump == null || water == null || waterPump.IsFull()) return;
 
-            ItemDefinition water = ItemManager.FindItemDefinition("water");
-            if (water == null) return;
+            int amount = GetAmount(configData.waterPumps.minBoost, configData.waterPumps.maxBoost);
 
-            foreach (WaterCatcher wCatcher in wCatcherList)
-            {
-                if (wCatcher != null && !wCatcher.IsFull())
-                {
-                    if (wCatcher.ShortPrefabName == "water_catcher_large" && lMax >= 1)
-                    {
-                        int amount;
-                        if (lMin == lMax) amount = lMax;
-                        else amount = rnd.Next(lMin, lMax + 1);
-
-                        if (amount >= 1) wCatcher.inventory?.AddItem(water, amount);
-                    }
-                    if (wCatcher.ShortPrefabName.Contains("water_catcher_small") && sMax >= 1)
-                    {
-                        int amount;
-                        if (sMin == sMax) amount = sMax;
-                        else amount = rnd.Next(sMin, sMax + 1);
-
-                        if (amount >= 1) wCatcher.inventory?.AddItem(water, amount);
-                    }
-                }
-            }
+            if (amount > 0)
+                waterPump.inventory.AddItem(water, amount);
         }
 
-        void AddToPumps()
+        int GetAmount(int min, int max)
         {
-            if (wPumpList == null || wPumpList.Count == 0) return;
-            if (wpMax < 1) return;
-
-            foreach (WaterPump wPump in wPumpList)
-            {
-                if (wPump != null && !wPump.IsFull() && wPump.HasFlag(BaseEntity.Flags.Reserved8))
-                {
-                    int amount;
-                    if (wpMin == wpMax) amount = wpMax;
-                    else amount = rnd.Next(wpMin, wpMax + 1);
-
-                    if (amount >= 1)
-                    {
-                        ItemDefinition water = WaterResource.GetAtPoint(wPump.WaterResourceLocation.position);
-                        if (water != null) wPump.inventory?.AddItem(water, amount);
-                    }
-                }
-            }
+            if (min < 0) min = 0;
+            if (max < 0) max = 0;
+            if (min >= max) return max;
+            return random.Next(min, max + 1);
         }
 
-        void OnEntitySpawned(WaterCatcher wCatcher)
-        {
-            if (!wCatcherList.Contains(wCatcher)) wCatcherList.Add(wCatcher);
-        }
-
-        void OnEntityKill(WaterCatcher wCatcher)
-        {
-            if (wCatcherList.Contains(wCatcher)) wCatcherList.Remove(wCatcher);
-        }
-
-        void OnEntitySpawned(WaterPump wPump)
-        {
-            if (!wPumpList.Contains(wPump)) wPumpList.Add(wPump);
-        }
-
-        void OnEntityKill(WaterPump wPump)
-        {
-            if (wPumpList.Contains(wPump)) wPumpList.Remove(wPump);
-        }
-
-        #region Config
+        #region Configuration
         private ConfigData configData;
 
         private class ConfigData
         {
-            [JsonProperty(PropertyName = "Large Water Catchers")]
-            public LargeCatchers largeCatchers = new LargeCatchers();
             [JsonProperty(PropertyName = "Small Water Catchers")]
-            public SmallCatchers smallCatchers = new SmallCatchers();
+            public SmallWaterCatchers smallWaterCatchers { get; set; }
+            [JsonProperty(PropertyName = "Large Water Catchers")]
+            public LargeWaterCatchers largeWaterCatchers { get; set; }
             [JsonProperty(PropertyName = "Water Pumps")]
-            public WaterPumps waterPumps = new WaterPumps();
-        }
+            public WaterPumps waterPumps { get; set; }
 
-        private class LargeCatchers
-        {
-            [JsonProperty(PropertyName = "Minimum Boost (per minute)")]
-            public int MinBoost = 0;
-            [JsonProperty(PropertyName = "Maximum Boost (per minute)")]
-            public int MaxBoost = 60;
-        }
+            public class SmallWaterCatchers
+            {
+                [JsonProperty(PropertyName = "Minimum Boost")]
+                public int minBoost { get; set; }
+                [JsonProperty(PropertyName = "Maximum Boost")]
+                public int maxBoost { get; set; }
+            }
 
-        private class SmallCatchers
-        {
-            [JsonProperty(PropertyName = "Minimum Boost (per minute)")]
-            public int MinBoost = 0;
-            [JsonProperty(PropertyName = "Maximum Boost (per minute)")]
-            public int MaxBoost = 20;
-        }
+            public class LargeWaterCatchers
+            {
+                [JsonProperty(PropertyName = "Minimum Boost")]
+                public int minBoost { get; set; }
+                [JsonProperty(PropertyName = "Maximum Boost")]
+                public int maxBoost { get; set; }
+            }
 
-        private class WaterPumps
-        {
-            [JsonProperty(PropertyName = "Minimum Boost (per minute)")]
-            public int MinBoost = 0;
-            [JsonProperty(PropertyName = "Maximum Boost (per minute)")]
-            public int MaxBoost = 510;
+            public class WaterPumps
+            {
+                [JsonProperty(PropertyName = "Minimum Boost")]
+                public int minBoost { get; set; }
+                [JsonProperty(PropertyName = "Maximum Boost")]
+                public int maxBoost { get; set; }
+            }
+
+            [JsonProperty(PropertyName = "Version (Do not modify)")]
+            public Oxide.Core.VersionNumber Version { get; set; }
         }
 
         protected override void LoadConfig()
@@ -170,6 +92,10 @@ namespace Oxide.Plugins
             {
                 configData = Config.ReadObject<ConfigData>();
                 if (configData == null) throw new Exception();
+
+                if (configData.Version < Version)
+                    UpdateConfigValues();
+
                 SaveConfig();
             }
             catch
@@ -179,8 +105,68 @@ namespace Oxide.Plugins
             }
         }
 
-        protected override void LoadDefaultConfig() => configData = new ConfigData();
-        protected override void SaveConfig() => Config.WriteObject(configData);
+        private ConfigData GetBaseConfig()
+        {
+            return new ConfigData
+            {
+                smallWaterCatchers = new ConfigData.SmallWaterCatchers
+                {
+                    minBoost = 0,
+                    maxBoost = 20
+                },
+                largeWaterCatchers = new ConfigData.LargeWaterCatchers
+                {
+                    minBoost = 0,
+                    maxBoost = 60
+                },
+                waterPumps = new ConfigData.WaterPumps
+                {
+                    minBoost = 0,
+                    maxBoost = 85
+                },
+                Version = Version
+            };
+        }
+
+        private void UpdateConfigValues()
+        {
+            PrintWarning("Config update detected! Updating config values...");
+            ConfigData baseConfig = GetBaseConfig();
+            if (configData.Version < new Core.VersionNumber(1, 0, 3))
+            {
+                configData = baseConfig;
+                configData.smallWaterCatchers.minBoost = Convert.ToInt32(GetConfig("Small Water Catchers", "Minimum Boost (per minute)", 0));
+                configData.smallWaterCatchers.maxBoost = Convert.ToInt32(GetConfig("Small Water Catchers", "Maximum Boost (per minute)", 20));
+                configData.largeWaterCatchers.minBoost = Convert.ToInt32(GetConfig("Large Water Catchers", "Minimum Boost (per minute)", 0));
+                configData.largeWaterCatchers.maxBoost = Convert.ToInt32(GetConfig("Large Water Catchers", "Maximum Boost (per minute)", 60));
+                int waterPumpMin = Convert.ToInt32(GetConfig("Water Pumps", "Minimum Boost (per minute)", 0));
+                int waterPumpMax = Convert.ToInt32(GetConfig("Water Pumps", "Maximum Boost (per minute)", 85));
+                configData.waterPumps.minBoost = waterPumpMin > 0 ? (int)Math.Round((double)waterPumpMin / 6) : waterPumpMin;
+                configData.waterPumps.maxBoost = waterPumpMax > 0 ? (int)Math.Round((double)waterPumpMax / 6) : waterPumpMax;
+            }
+            configData.Version = Version;
+            PrintWarning("Config update completed!");
+        }
+
+        private object GetConfig(string menu, string dataValue, object defaultValue)
+        {
+            var data = Config[menu] as Dictionary<string, object>;
+            if (data == null)
+            {
+                data = new Dictionary<string, object>();
+                Config[menu] = data;
+            }
+            object value;
+            if (!data.TryGetValue(dataValue, out value))
+            {
+                value = defaultValue;
+                data[dataValue] = value;
+            }
+            return value;
+        }
+
+        protected override void LoadDefaultConfig() => configData = GetBaseConfig();
+        protected override void SaveConfig() => Config.WriteObject(configData, true);
         #endregion
     }
 }
